@@ -1,0 +1,244 @@
+#!/usr/bin/env python
+#
+# vcflint -- Normalize and Deduplicate VCF-formatted contact files
+# Created: Marcus Butler <marcusb@marcusb.org>, April-25-2020
+#
+# Copyright 2000 Marcus Butler
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+#  1. Redistributions of source code must retain the above copyright notice,
+#     this list of conditions and the following disclaimer.
+#
+#  2. Redistributions in binary form must reproduce the above copyright notice,
+#     this list of conditions and the following disclaimer in the documentation
+#     and/or other materials provided with the distribution.
+#
+#  3. Neither the name of the copyright holder nor the names of its
+#     contributors may be used to endorse or promote products derived from this
+#     software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+#
+
+from sys import argv, exit
+from os import getenv
+import re
+
+def DBG(str):
+    if getenv("DEBUG"):
+        print(str)
+
+def parse_vcf(file):
+    f = open(file)
+
+    cards = [ {} ]
+
+    idx = 0
+    while True:
+        line = f.readline()
+
+        if line == '':
+            break
+        if line.find('BEGIN:VCARD') == 0:
+            next
+        if line.find('END:VCARD') == 0:
+            DBG("New Contact\n")
+            idx += 1
+            cards.append({})
+            next
+        if line[0:5] == 'PHOTO':
+            DBG("Parsing photo...")
+            while True:
+                nextline = f.readline()
+                if nextline.find(':') != -1:
+                    break
+                else:
+                    DBG("Appending" + nextline + " to photo")
+                    line += nextline
+        try:
+            key = line[0:line.index(':')]
+            value = line[line.index(':') + 1:]
+
+            if cards[idx].has_key(key):
+                if type(cards[idx][key]) is list:
+                    cards[idx][key].append(value)
+                else:
+                    oldval = cards[idx][key]
+                    cards[idx][key] = [oldval, value]
+            else:
+                cards[idx][key] = value
+        except ValueError:
+            DBG("Skipping invalid line" + line)
+    f.close()
+    return cards
+
+def normalize_vcf(cards):
+    new_cards = []
+    for card in cards:
+        new_card = {}
+
+        DBG("Card has keys: " + str(card.keys()))
+
+        # These elements are copied over as-is
+        for element in ['FN', 'N', 'ORG', 'TITLE', 'PHOTO;ENCODING=b;TYPE=JPEG', 'IMPP']:
+            if card.has_key(element):
+                new_card[element] = card[element]
+
+        # Copy notes over if it isn't an Outlook read-only message
+        if card.has_key('NOTE'):
+            if card['NOTE'].find("This contact is read-only.") == -1:
+                new_card['NOTE'] = card['NOTE']
+
+        # Normalize email addresses
+        emails = []
+        validated_emails = {}
+        for key in card.keys():
+            if key.find('EMAIL') > -1:
+                if type(card[key]) is str:
+                    emails.append(key + ':' + card[key])
+                elif type(card[key]) is list:
+                    for element in card[key]:
+                        emails.append(key + ':' + element)
+        
+        DBG("Potential email addresses" + str(emails))
+
+        for email in emails:
+            m = re.search(':([a-zA-Z0-9_\-\.\']+@[a-zA-Z0-9_\-\.]+\.[a-zA-Z]{2,5})', email)
+            if type(m) == type(None) or m.lastindex != 1:
+                DBG("INVALID-EMAIL-LINE: " + email)
+                continue
+            else:
+                address = m.group(1)
+                DBG("Found valid email: " + address)
+                
+                if not validated_emails.has_key(address):
+                    validated_emails[address] = {}
+                    validated_emails[address]['preferred'] = 0
+                    validated_emails[address]['type'] = "WORK"
+                if email.find("type=pref") != -1:
+                    validated_emails[address]['preferred'] = 1
+                if email.find("type=WORK") != -1:
+                    validated_emails[address]['type'] = "WORK"
+                elif email.find("type=HOME") != -1:
+                    validated_emails[address]['type'] = "HOME"
+
+        DBG("Validated emails: " + str(validated_emails))
+
+        new_card['EMAIL'] = []
+
+        for email in validated_emails.keys():
+            line = "type=INTERNET"
+            if validated_emails[email]['preferred'] == 1:
+                line += ";type=pref"
+            if validated_emails[email]['type'] == "WORK":
+                line += ";type=WORK:"
+            elif validated_emails[email]['type'] == "HOME":
+                line += ";type=HOME:"
+            else:
+                line += ":"
+            line += email
+            new_card['EMAIL'].append(line)
+
+        # Normalize telephone numbers
+        tels = []
+        validated_tels = {}
+        for key in card.keys():
+            if key.find('TEL') > -1:
+                if type(card[key]) is str:
+                    tels.append(key + ':' + card[key])
+                elif type(card[key]) is list:
+                    for element in card[key]:
+                        tels.append(key + ':' + element)
+        
+        DBG("Potential telephone numbers" + str(tels))
+
+        for tel in tels:
+
+            # Skip over UID and FAX lines
+            if tel.find("VOICE:UID") != -1 or tel.find("type=FAX") != -1 or tel.find("type=FA\\") != -1:
+                continue
+
+            m = re.search(':([0-9\-\+\(\)\ \./x]+)', tel)
+            if type(m) == type(None) or m.lastindex != 1:
+                DBG("INVALID-TELEPHONE-LINE: " + tel)
+                continue
+            else:
+                number = m.group(1)
+                DBG("GOOD-TELEPHONE-LINE: " + number)
+                
+                if not validated_tels.has_key(number):
+                    validated_tels[number] = {}
+                    validated_tels[number]['preferred'] = 0
+                    validated_tels[number]['type'] = "WORK"
+                    validated_tels[number]['iphone'] = 0
+                if tel.lower().find("type=pref") != -1:
+                    validated_tels[number]['preferred'] = 1
+                if tel.lower().find("type=work") != -1:
+                    validated_tels[number]['type'] = "WORK"
+                elif tel.lower().find("type=home") != -1:
+                    validated_tels[number]['type'] = "HOME"
+                elif tel.lower().find("type=cell") != -1:
+                    validated_tels[number]['type'] = "CELL"
+                    if tel.lower().find("type=iphone") != -1:
+                        validated_tels[number]['iphone'] = 1
+    
+        DBG("Validated emails: " + str(validated_emails))
+
+        new_card['TEL'] = []
+
+        for tel in validated_tels.keys():
+            line = ""
+
+            if validated_tels[tel]['type'] == "WORK":
+                line += "type=WORK"
+            elif validated_tels[tel]['type'] == "HOME":
+                line += "type=HOME"
+            elif validated_tels[tel]['type'] == "CELL":
+                if validated_tels[tel]['iphone'] == 1:
+                    line += "type=IPHONE;type=CELL"
+                else:
+                    line += "type=CELL"
+            else:
+                DBG("FATAL-ERROR: Invalid phone type")
+                exit(1)
+ 
+            if validated_tels[tel]['preferred'] == 1:
+                line += ";type=pref:"
+            else:
+                line += ":"
+
+            line += tel
+            new_card['TEL'].append(line)
+
+        new_cards.append(new_card)
+
+    return new_cards
+
+if len(argv) != 2:
+    print("Usage: vcflint <input-file>")
+    exit(1)
+
+cards = parse_vcf(argv[1])
+clean_cards = normalize_vcf(cards)
+
+for card in clean_cards:
+    print("BEGIN:VCARD")
+    for key in card.keys():
+        if type(card[key]) is str:
+            print key + ":" + card[key]
+        if type(card[key]) is list:
+            for element in card[key]:
+                print key + ';' + element
+    print("END:VCARD")
