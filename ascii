@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+#
+# ascii -- Display a table of printable ASCII characters along with the
+#          corresponding numeric values in various forms
+#
+# Copyright 2021 Marcus Butler <marcusb@marcusb.org>
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+#  1. Redistributions of source code must retain the above copyright notice,
+#     this list of conditions and the following disclaimer.
+#
+#  2. Redistributions in binary form must reproduce the above copyright notice,
+#     this list of conditions and the following disclaimer in the documentation
+#     and/or other materials provided with the distribution.
+#
+#  3. Neither the name of the copyright holder nor the names of its
+#     contributors may be used to endorse or promote products derived from this
+#     software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+from os import get_terminal_size
+from math import ceil
+from sys import argv
+
+HEADER = "| C | HEX | DEC | OCT "
+CHAR = '|%3s| %3x | %3d | %3o '
+
+chars = list(range (ord('A'), ord('Z') + 1))
+chars = chars + list(range(ord('a'), ord('z') + 1))
+chars = chars + list(range(ord('0'), ord('9') + 1))
+chars = chars + list(range(ord(' '), ord('/') + 1))
+chars = chars + list(range(ord(':'), ord('@') + 1))
+chars =	chars +	list(range(ord('['), ord('`') + 1))
+chars =	chars +	list(range(ord('{'), ord('~') + 1))
+
+if len(argv) > 1:
+    if argv[1] == '--in-order':
+        chars = list(range(32, 127))
+    elif len(argv[1]) == 1:
+        print("Character: " + argv[1])
+        print("Hex: " + hex(ord(argv[1])))
+        print("Dec: " + str(ord(argv[1])))
+        print("Oct: " + oct(ord(argv[1])))
+
+        exit(0)
+    else:
+        print("Usage: ascii [--in-order] | [CHR]")
+        exit(1)
+        
+(cols, rows) = get_terminal_size()
+
+nchars_per_row = int(cols / (len(HEADER) + 1))
+
+# Print Header
+for i in range(0,nchars_per_row):
+    print(HEADER, end='')
+
+print('|')
+
+for i in range(0,nchars_per_row):
+    print('-' * len(HEADER), end='')
+print('-')
+
+# Print table
+rows = ceil(len(chars) / nchars_per_row)
+for i in range(0,rows):
+    for j in range(0,nchars_per_row):
+        idx = (j * rows) + i
+        if idx < len(chars):
+           print(CHAR %
+                 ('SPC' if chars[idx] == 32 else ' %c ' % chr(chars[idx]),
+                  chars[idx], chars[idx], chars[idx]),
+                 end='')
+    print('|')
+
+exit(0)
