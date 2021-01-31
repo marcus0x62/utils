@@ -15,4 +15,5 @@ them in the hope they may be useful to others.
   identifying unique contacts, searching for unique telephone and email
   addresses for each and building a de-duplicated VCF file.  This does make a
   bunch of assumptions about how I expect my contacts to look, what fields I
-  care about, etc., so tread carefully and make lots of backups!
+  care about, etc., so tread carefully and make lots of backups! Set the
+  environment variable DEBUG before running for copious debug output.
