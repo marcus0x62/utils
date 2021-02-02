@@ -65,7 +65,7 @@ else:
 (id, file) = mkstemp(suffix='.html')
 
 fd = open(file, 'w')
-fd.write(processed.replace('\n','').replace('\\t','').replace('\\\'','\''))
+fd.write(processed.replace('\\n','').replace('\\t','').replace('\\\'','\''))
 fd.close()
 
 system("/usr/bin/open -a Safari " + file)
