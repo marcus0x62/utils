@@ -8,6 +8,12 @@ them in the hope they may be useful to others.
   Passing the option --in-order will show a table of values from 32 - 126 in
   order.  Passing no arguments will show the same range of characters grouped
   by type.
+
+* [muttiml](muttiml) -- HTML Mail helper for Mutt.  This is a small Python
+  script that expects to receive an email message on stdin, extracts the HTML
+  message body, and performs some minimal processing to improve message
+  appearance.  Finally, it saves the message to a temp file and instructs
+  Safari to open the message.
   
 * [vcflint](vcflint) -- Virtual Contact Format normalizer and deduplicator.
   My contacts database was overrun with duplicates and weird metadata artifacts
