@@ -49,8 +49,6 @@ msg = email.message_from_string(raw_msg)
 type = msg.get_content_type()
 
 if type == 'text/html':
-    print("CTE: " + msg.get('Content-Transfer-Encoding'))
-    
     if msg.get('Content-Transfer-Encoding') == 'quoted-printable':
         tmp = msg.get_payload().replace('=\r','').replace('\r','')
         processed = str(quopri.decodestring(tmp))
