@@ -1,0 +1,35 @@
+#!/bin/bash
+#
+# awslogin -- Make AWS AssumeRole logins with a Yubikey a little easier.
+# Created: Marcus Butler <marcusb@marcusb.org>, June-11-2023
+#
+# This shell script automates logging in to AWS using STS Assume Role and authenticating using a
+# Yubikey-based token code.
+#
+
+# Force clear any existing (probably expired) creds...
+unset AWS_ACCESS_KEY_ID
+unset AWS_SECRET_ACCESS_KEY
+unset AWS_SESSION_TOKEN
+
+if [ ! -f $HOME/.aws-login ]; then
+    echo "*** Error *** Set your session name, serial number, and role ARN in $HOME/.aws-login: "
+    echo "AWS_ROLE_ARN=\"...\""
+    echo "AWS_SESSION_NAME=\"...\""
+    echo "AWS_SERIAL_NUMBER=\"...\""
+    exit 1
+fi
+
+source $HOME/.aws-login
+
+TEMP_FILE=$(/usr/bin/mktemp)
+CODE=$(ykman oath accounts code -s S1-TOTP)
+
+aws sts assume-role --role-arn $AWS_ROLE_ARN --role-session-name $AWS_SESSION_NAME \
+    --serial-number $AWS_SERIAL_NUMBER --token-code $CODE > $TEMP_FILE
+
+echo "export AWS_ACCESS_KEY_ID=$(grep AccessKeyId $TEMP_FILE|cut -f2 -d:|sed s/\[,\ \]//g)"
+echo "export AWS_SECRET_ACCESS_KEY=$(grep SecretAccessKey $TEMP_FILE|cut -f2 -d:|sed s/\[,\ \]//g)"
+echo "export AWS_SESSION_TOKEN=$(grep SessionToken $TEMP_FILE|cut -f2 -d:|sed s/\[,\ \]//g)"
+
+/bin/rm -f $TEMP_FILE
