@@ -96,7 +96,7 @@ var pattern string = "Key:"
 
 var wg sync.WaitGroup
 
-func worker(wg *sync.WaitGroup, dispatch chan [][]uint8, decrypt chan string) {
+func worker(wg *sync.WaitGroup, dispatch chan [][]uint8, decrypt chan []string) {
 	var keys [][]uint8
 	var status bool
 
@@ -163,7 +163,7 @@ func worker(wg *sync.WaitGroup, dispatch chan [][]uint8, decrypt chan string) {
 				}
 			}
 			if found == true {
-				decrypt <- string(dec)
+				decrypt <- []string{string(dec), string(key)}
 			}
 		}
 	}
@@ -265,7 +265,7 @@ func dispatcher(wg *sync.WaitGroup, dispatch chan [][]uint8) {
 }
 
 func main() {
-	decrypt := make(chan string)
+	decrypt := make(chan []string)
 	dispatch := make(chan [][]uint8)
 
 	for _, arg := range os.Args {
@@ -312,6 +312,7 @@ func main() {
 	go dispatcher(&wg, dispatch)
 
 	fmt.Printf("Waiting for key...\n")
-	fmt.Printf("Found key: '%s'\n", <-decrypt)
+	payload := <-decrypt
+	fmt.Printf("Found key: '%s'\nPayload: '%s'\n", payload[1], payload[0])
 	os.Exit(0)
 }
