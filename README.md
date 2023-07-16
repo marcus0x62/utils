@@ -14,7 +14,12 @@ them in the hope they may be useful to others.
   message body, and performs some minimal processing to improve message
   appearance.  Finally, it saves the message to a temp file and instructs
   Safari to open the message.
-  
+
+* [rc4-bruteforcer](rc4-bruteforcer/rc4-bruteforcer.go) -- This is a threaded RC4 brute forcer that is
+  optimized for the kinds of scenarios you are likely to find in Capture the Flag competitions.  That is
+  to say: you know part of the key and can rule in/out certain values for the unknown bytes.  It is
+  written in Go for maximum portability; there is also an earlier C version (also threaded) in the repo.
+
 * [vcflint](vcflint) -- Virtual Contact Format normalizer and deduplicator.
   My contacts database was overrun with duplicates and weird metadata artifacts
   that made most of my contact entries useless.  This tries to fix that by
