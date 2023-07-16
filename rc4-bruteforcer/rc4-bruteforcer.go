@@ -2,14 +2,42 @@
  *
  * reverser.go -- A basic threaded RC4 decryption tool.
  *
- * This is a more-or-less direct translation of a C utility I wrote during a CTF, which in turn was a
- * C translation of the decryption routine I was looking at in IDA Pro with some brute forcing and
- * paralleization code bolted on.
+ * This is a threaded RC4 decryption utility that was originally written (in C) during a CTF.  It is fast
+ * and allows you the enter what you know about the key -- known bytes, min/max values for unknown bytes,
+ * and fixed offsets to add to individual bytes in order to constrain the key space to be searched.
+ * It also includes an estimate mode (invoke with --estimate) that will tell you the current size of the
+ * key space to be searched and a rough estimate for how long a worst-case brute force search of that
+ * key space would take on the machine the utility is being executed on.  One weakness of this is that
+ * it does require the user to specify a bit of known plaintext to identify when the correct key is
+ * found.  It doesn't do any statistical analysis to identify likely successful keys.
  *
- * The included nested-loop structure is built around an example 11-byte key where some bytes are known
- * and some aren't, and where there are value constraints on the unknown bytes; this can be modified as
- * needed.  The loop for the first unknown byte is used to create goroutines to parallelize the key
- * search.
+ * Copyright 2023 Marcus Butler
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
  */
 
 package main
@@ -21,11 +49,10 @@ import (
 	"time"
 )
 
-var n_threads int = 12
+var n_threads int = 12 // Number of worker threads.  Physical cores * 2 is a good first guess
 var n_keys int = 65536 // Number of keys to dispatch to a worker
 
-var wg sync.WaitGroup
-
+// Put your encrypted blob here.
 var enc []uint8 = []uint8{
 	0xa6, 0xcb, 0x8d, 0xc9, 0x70, 0x96, 0xd1, 0x71, 0x6f,
 	0x97, 0x66, 0xa7, 0x9d, 0xa6, 0x24, 0x61, 0xd6, 0xea,
@@ -41,6 +68,21 @@ var enc []uint8 = []uint8{
 {0x00, 0x00, 0x00, 0x00, 12, 31, 23, 12, 4, 2, 147}}                // Max value for byte
 */
 
+// This is where you enter what you know about the key.  Each line should have the same number of bytes.
+//
+// The first array element should be an array of the bytes you known about -- they don't need to be
+// consecutive.  Set unknown bytes to 0.
+//
+// The elements in the second line should be set to 1 for known bytes and 0 for unknown bytes.
+//
+// The elements in the third line should be set to any manual offsets for each byte (i.e., the sample
+// you are analyzing adds 0x35 to the 4th byte of the key.
+//
+// The elements in the fourth line are the minimum values for each variable byte -- set to 0 if you
+// don't know (or there is no obvious minimum.)
+//
+// The elements in the fifth line are the maximum value for each variable byte -- set to 255 if you don't
+// know (or there is no obvious maximum.)
 var keyspace [][]uint8 = [][]uint8{
 	{0x62, 0x30, 0x30, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // Known key bytes
 	{0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // Known/unknown byte flag
@@ -48,7 +90,11 @@ var keyspace [][]uint8 = [][]uint8{
 	{0x00, 0x00, 0x00, 0x00, 1, 1, 0, 5, 0, 0, 0},                      // Min value for byte
 	{0x00, 0x00, 0x00, 0x00, 12, 31, 23, 12, 4, 2, 147}}                // Max value for byte
 
+// Set this to the known plaintext you are searching for.  So, if you know the flag starts out with
+// Flag: or Key:, put that here.
 var pattern string = "Key:"
+
+var wg sync.WaitGroup
 
 func worker(wg *sync.WaitGroup, dispatch chan [][]uint8, decrypt chan string) {
 	var keys [][]uint8
