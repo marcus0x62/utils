@@ -23,7 +23,7 @@ fi
 source $HOME/.aws-login
 
 TEMP_FILE=$(/usr/bin/mktemp)
-CODE=$(ykman oath accounts code -s S1-TOTP)
+CODE=$(ykman oath accounts code -s ${AWS_TOTP})
 
 aws sts assume-role --role-arn $AWS_ROLE_ARN --role-session-name $AWS_SESSION_NAME \
     --serial-number $AWS_SERIAL_NUMBER --token-code $CODE > $TEMP_FILE
